@@ -39,10 +39,13 @@ lio_sam:
   imuRPYWeight: 0.01
 
   # Extrinsics (lidar -> IMU)
+  # imu 在 lidar坐标系下的平移
   extrinsicTrans: [0.0, 0.0, 0.0]
+  # lidar系下imu的姿态
   extrinsicRot: [-1, 0, 0,
                   0, 1, 0,
                   0, 0, -1]
+  # lidar系下imu RPY的外参矩阵
   extrinsicRPY: [0,  1, 0,
                  -1, 0, 0,
                   0, 0, 1]
