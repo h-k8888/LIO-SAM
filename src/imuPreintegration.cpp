@@ -237,10 +237,11 @@ public:
         // 订阅激光里程计，来自mapOptimization，用两帧之间的imu预计分量构建因子图，优化当前帧位姿（这个位姿仅用于更新每时刻的imu里程计，以及下一次因子图优化）
         subOdometry = nh.subscribe<nav_msgs::Odometry>("lio_sam/mapping/odometry_incremental", 5,    &IMUPreintegration::odometryHandler, this, ros::TransportHints().tcpNoDelay());
 
-        //imu积分后的odometry数据
+        //imu积分后预测的odometry数据 odometry/imu_incremental
         pubImuOdometry = nh.advertise<nav_msgs::Odometry> (odomTopic+"_incremental", 2000);
 
-        boost::shared_ptr<gtsam::PreintegrationParams> p = gtsam::PreintegrationParams::MakeSharedU(imuGravity);
+        // 定义进行imu积分的imu传感器信息
+        boost::shared_ptr<gtsam::PreintegrationParams> p = gtsam::PreintegrationParams::MakeSharedU(imuGravity);//ENU (0,0,-9.81)
         p->accelerometerCovariance  = gtsam::Matrix33::Identity(3,3) * pow(imuAccNoise, 2); // acc white noise in continuous
         p->gyroscopeCovariance      = gtsam::Matrix33::Identity(3,3) * pow(imuGyrNoise, 2); // gyro white noise in continuous
         p->integrationCovariance    = gtsam::Matrix33::Identity(3,3) * pow(1e-4, 2); // error committed in integrating position from velocities
@@ -342,7 +343,7 @@ public:
             // 通过最终优化过的雷达位姿初始化先验的位姿信息并添加到非线性因子图中
             // 系统初始化时，odom系下，根据外参计算出的
             prevPose_ = lidarPose.compose(lidar2Imu);//当前lidar pose对应的imu pose
-            gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, priorPoseNoise);
+            gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, priorPoseNoise);//fixed
             graphFactors.add(priorPose);
 
             // initial velocity
@@ -380,7 +381,8 @@ public:
 
 
         // reset graph for speed
-        // 当isam2规模太大时，进行边缘化，重置优化器和因子图 // 当isam2规模太大时，进行边缘化，重置优化器和因子图
+        // 当isam2规模太大时，进行边缘化，重置优化器和因子图
+        // 此处并没有做边际化处理
         if (key == 100)
         {
             // get updated noise before reset
@@ -451,17 +453,19 @@ public:
         // add imu bias between factor
         // 将imu偏置因子添加到因子图中
         // 添加imu偏置因子，前一帧偏置，当前帧偏置，观测值，噪声协方差；deltaTij()是积分段的时间
+        // 体现imu随机游走的过程
         graphFactors.add(gtsam::BetweenFactor<gtsam::imuBias::ConstantBias>(B(key - 1), B(key), gtsam::imuBias::ConstantBias(),
                          gtsam::noiseModel::Diagonal::Sigmas(sqrt(imuIntegratorOpt_->deltaTij()) * noiseModelBetweenBias)));
 
         // add pose factor
-        // 当前imuPose（最新）
+        // 当前imuPose（最新关键帧因子）
         gtsam::Pose3 curPose = lidarPose.compose(lidar2Imu);
         gtsam::PriorFactor<gtsam::Pose3> pose_factor(X(key), curPose, degenerate ? correctionNoise2 : correctionNoise);
         graphFactors.add(pose_factor);
 
         // insert predicted values
         // 用前一帧的状态、偏置，施加imu预计分量，得到当前帧的状态
+        // 插入预测的值
         gtsam::NavState propState_ = imuIntegratorOpt_->predict(prevState_, prevBias_);
         graphValues.insert(X(key), propState_.pose());
         graphValues.insert(V(key), propState_.v());
