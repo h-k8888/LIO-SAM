@@ -45,18 +45,19 @@ private:
     ros::Subscriber subLaserCloud;
     ros::Publisher  pubLaserCloud;
     
-    ros::Publisher pubExtractedCloud;
-    ros::Publisher pubLaserCloudInfo;
+    ros::Publisher pubExtractedCloud; //发布有效点云
+    ros::Publisher pubLaserCloudInfo; //发布雷达点云
 
     ros::Subscriber subImu;
     std::deque<sensor_msgs::Imu> imuQueue;
 
-    ros::Subscriber subOdom;
-    std::deque<nav_msgs::Odometry> odomQueue;
+    ros::Subscriber subOdom; //IMU里程计增量
+    std::deque<nav_msgs::Odometry> odomQueue; //IMU里程计增量缓存
 
     std::deque<sensor_msgs::PointCloud2> cloudQueue;
-    sensor_msgs::PointCloud2 currentCloudMsg;
+    sensor_msgs::PointCloud2 currentCloudMsg; //当前雷达信息
 
+    //畸变纠正时，IMU积分得到的IMU时间戳和IMU姿态，由IMU数据积分得到
     double *imuTime = new double[queueLength];
     double *imuRotX = new double[queueLength];
     double *imuRotY = new double[queueLength];
@@ -74,14 +75,15 @@ private:
     int deskewFlag;
     cv::Mat rangeMat;
 
+    //畸变纠正时，IMU位置增量，由IMU里程计计算（IMU start <-- end 相对位置)
     bool odomDeskewFlag;
     float odomIncreX;
     float odomIncreY;
     float odomIncreZ;
 
     lio_sam::cloud_info cloudInfo;
-    double timeScanCur;
-    double timeScanEnd;
+    double timeScanCur;//当前帧开始时间
+    double timeScanEnd;//当前帧结束时间
     std_msgs::Header cloudHeader;
 
 
@@ -167,6 +169,7 @@ public:
         // cout << "roll: " << imuRoll << ", pitch: " << imuPitch << ", yaw: " << imuYaw << endl << endl;
     }
 
+    //缓存IMU里程计信息
     void odometryHandler(const nav_msgs::Odometry::ConstPtr& odometryMsg)
     {
         std::lock_guard<std::mutex> lock2(odoLock);
@@ -175,18 +178,24 @@ public:
 
     void cloudHandler(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg)
     {
+        //转换点云格式并缓存点云
         if (!cachePointCloud(laserCloudMsg))
             return;
 
+        //计算雷达起始和结束时间戳之间，IMU的相对位姿变换
         if (!deskewInfo())
             return;
 
+        //对点云畸变纠正，并投影到深度图
         projectPointCloud();
 
+        //确定每根线的起始和结束点索引，并提取出畸变纠正后点云以及对应的点云信息
         cloudExtraction();
 
+        //发布有效的点云和激光点云信息（包括每根线的起始点和结束点索引，点深度，列索引）
         publishClouds();
 
+        //重置中间变量
         resetParameters();
     }
 
@@ -291,8 +300,10 @@ public:
             return false;
         }
 
+        //积分获取雷达开始和结束时间内IMU的姿态（旋转）
         imuDeskewInfo();
 
+        //由IMU里程计，计算雷达开始和结束时间内IMU的位置变化增量（位移）
         odomDeskewInfo();
 
         return true;
@@ -302,6 +313,7 @@ public:
     {
         cloudInfo.imuAvailable = false;
 
+        //丢弃早于雷达开始时间戳的IMU数据
         while (!imuQueue.empty())
         {
             if (imuQueue.front().header.stamp.toSec() < timeScanCur - 0.01)
@@ -320,6 +332,7 @@ public:
             sensor_msgs::Imu thisImuMsg = imuQueue[i];
             double currentImuTime = thisImuMsg.header.stamp.toSec();
 
+            //IMUshuju 四元数转欧拉角
             // get roll, pitch, and yaw estimation for this scan
             if (currentImuTime <= timeScanCur)
                 imuRPY2rosRPY(&thisImuMsg, &cloudInfo.imuRollInit, &cloudInfo.imuPitchInit, &cloudInfo.imuYawInit);
@@ -327,6 +340,7 @@ public:
             if (currentImuTime > timeScanEnd + 0.01)
                 break;
 
+            //初始化第一帧
             if (imuPointerCur == 0){
                 imuRotX[0] = 0;
                 imuRotY[0] = 0;
@@ -341,6 +355,7 @@ public:
             imuAngular2rosAngular(&thisImuMsg, &angular_x, &angular_y, &angular_z);
 
             // integrate rotation
+            // 角速度积分
             double timeDiff = currentImuTime - imuTime[imuPointerCur-1];
             imuRotX[imuPointerCur] = imuRotX[imuPointerCur-1] + angular_x * timeDiff;
             imuRotY[imuPointerCur] = imuRotY[imuPointerCur-1] + angular_y * timeDiff;
@@ -361,6 +376,7 @@ public:
     {
         cloudInfo.odomAvailable = false;
 
+        //丢弃早于当前开始时间的IMU数据
         while (!odomQueue.empty())
         {
             if (odomQueue.front().header.stamp.toSec() < timeScanCur - 0.01)
@@ -377,7 +393,7 @@ public:
 
         // get start odometry at the beinning of the scan
         nav_msgs::Odometry startOdomMsg;
-
+        //获取IMUl里程计起始帧（雷达开始和结束时间间隔内的第一个IMU里程计）
         for (int i = 0; i < (int)odomQueue.size(); ++i)
         {
             startOdomMsg = odomQueue[i];
@@ -391,10 +407,12 @@ public:
         tf::Quaternion orientation;
         tf::quaternionMsgToTF(startOdomMsg.pose.pose.orientation, orientation);
 
+        //IMU里程计姿态转欧拉角
         double roll, pitch, yaw;
         tf::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
 
         // Initial guess used in mapOptimization
+        // IMU里程计位姿记录，并作为地图优化的初始值发布
         cloudInfo.initialGuessX = startOdomMsg.pose.pose.position.x;
         cloudInfo.initialGuessY = startOdomMsg.pose.pose.position.y;
         cloudInfo.initialGuessZ = startOdomMsg.pose.pose.position.z;
@@ -411,7 +429,7 @@ public:
             return;
 
         nav_msgs::Odometry endOdomMsg;
-
+        //获得IMU里程计的结束帧（雷达开始和结束时间间隔内的最后一个IMU里程计，可能超出雷达结束时间戳）
         for (int i = 0; i < (int)odomQueue.size(); ++i)
         {
             endOdomMsg = odomQueue[i];
@@ -425,14 +443,17 @@ public:
         if (int(round(startOdomMsg.pose.covariance[0])) != int(round(endOdomMsg.pose.covariance[0])))
             return;
 
+        //IMU里程计起始位姿
         Eigen::Affine3f transBegin = pcl::getTransformation(startOdomMsg.pose.pose.position.x, startOdomMsg.pose.pose.position.y, startOdomMsg.pose.pose.position.z, roll, pitch, yaw);
 
+        //IMU里程计结束位姿
         tf::quaternionMsgToTF(endOdomMsg.pose.pose.orientation, orientation);
         tf::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
         Eigen::Affine3f transEnd = pcl::getTransformation(endOdomMsg.pose.pose.position.x, endOdomMsg.pose.pose.position.y, endOdomMsg.pose.pose.position.z, roll, pitch, yaw);
 
-        Eigen::Affine3f transBt = transBegin.inverse() * transEnd;
+        Eigen::Affine3f transBt = transBegin.inverse() * transEnd;//相对位姿变换 Start <-- End
 
+        //雷达帧间位姿增量
         float rollIncre, pitchIncre, yawIncre;
         pcl::getTranslationAndEulerAngles(transBt, odomIncreX, odomIncreY, odomIncreZ, rollIncre, pitchIncre, yawIncre);
 
@@ -443,6 +464,7 @@ public:
     {
         *rotXCur = 0; *rotYCur = 0; *rotZCur = 0;
 
+        //第一个时间戳大于当前点的IMU数据
         int imuPointerFront = 0;
         while (imuPointerFront < imuPointerCur)
         {
@@ -451,12 +473,14 @@ public:
             ++imuPointerFront;
         }
 
+        //如果不存在时间戳大于当前点的IMU数据，直接返回最近的IMU数据
         if (pointTime > imuTime[imuPointerFront] || imuPointerFront == 0)
         {
             *rotXCur = imuRotX[imuPointerFront];
             *rotYCur = imuRotY[imuPointerFront];
             *rotZCur = imuRotZ[imuPointerFront];
         } else {
+            //如果存在时间戳大于当前点的IMU数据，与前一帧IMU数据插值计算姿态
             int imuPointerBack = imuPointerFront - 1;
             double ratioFront = (pointTime - imuTime[imuPointerBack]) / (imuTime[imuPointerFront] - imuTime[imuPointerBack]);
             double ratioBack = (imuTime[imuPointerFront] - pointTime) / (imuTime[imuPointerFront] - imuTime[imuPointerBack]);
@@ -466,6 +490,7 @@ public:
         }
     }
 
+    //认为传感器移动较慢，位移畸变较小，直接将位移畸变置零
     void findPosition(double relTime, float *posXCur, float *posYCur, float *posZCur)
     {
         *posXCur = 0; *posYCur = 0; *posZCur = 0;
@@ -487,7 +512,7 @@ public:
         if (deskewFlag == -1 || cloudInfo.imuAvailable == false)
             return *point;
 
-        double pointTime = timeScanCur + relTime;
+        double pointTime = timeScanCur + relTime; //绝对时间戳
 
         float rotXCur, rotYCur, rotZCur;
         findRotation(pointTime, &rotXCur, &rotYCur, &rotZCur);
@@ -495,15 +520,17 @@ public:
         float posXCur, posYCur, posZCur;
         findPosition(relTime, &posXCur, &posYCur, &posZCur);
 
+        //获取第一个点时间戳对应的位姿增量
         if (firstPointFlag == true)
         {
+            // start <-- w
             transStartInverse = (pcl::getTransformation(posXCur, posYCur, posZCur, rotXCur, rotYCur, rotZCur)).inverse();
             firstPointFlag = false;
         }
 
         // transform points to start
         Eigen::Affine3f transFinal = pcl::getTransformation(posXCur, posYCur, posZCur, rotXCur, rotYCur, rotZCur);
-        Eigen::Affine3f transBt = transStartInverse * transFinal;
+        Eigen::Affine3f transBt = transStartInverse * transFinal; // start <-- t
 
         PointType newPoint;
         newPoint.x = transBt(0,0) * point->x + transBt(0,1) * point->y + transBt(0,2) * point->z + transBt(0,3);
@@ -526,21 +553,21 @@ public:
             thisPoint.z = laserCloudIn->points[i].z;
             thisPoint.intensity = laserCloudIn->points[i].intensity;
 
-            float range = pointDistance(thisPoint);
+            float range = pointDistance(thisPoint); // 深度 sqrt(x^2 + y^2 + z^2)
             if (range < lidarMinRange || range > lidarMaxRange)
                 continue;
 
-            int rowIdn = laserCloudIn->points[i].ring;
+            int rowIdn = laserCloudIn->points[i].ring; // ring，即行索引
             if (rowIdn < 0 || rowIdn >= N_SCAN)
                 continue;
 
             if (rowIdn % downsampleRate != 0)
                 continue;
 
-            float horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI;
+            float horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI; // 水平角
 
             static float ang_res_x = 360.0/float(Horizon_SCAN);
-            int columnIdn = -round((horizonAngle-90.0)/ang_res_x) + Horizon_SCAN/2;
+            int columnIdn = -round((horizonAngle-90.0)/ang_res_x) + Horizon_SCAN/2; //计算列索引
             if (columnIdn >= Horizon_SCAN)
                 columnIdn -= Horizon_SCAN;
 
@@ -550,6 +577,7 @@ public:
             if (rangeMat.at<float>(rowIdn, columnIdn) != FLT_MAX)
                 continue;
 
+            //对点进行畸变纠正
             thisPoint = deskewPoint(&thisPoint, laserCloudIn->points[i].time);
 
             rangeMat.at<float>(rowIdn, columnIdn) = range;
