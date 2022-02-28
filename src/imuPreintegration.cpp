@@ -20,6 +20,11 @@ using gtsam::symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 using gtsam::symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 using gtsam::symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
 
+/** 订阅 odometry/imu_incremental
+ **      lio_sam/mapping/odometry
+ ** 发布  odometry/imu
+ *        "lio_sam/imu/path"
+ */
 class TransformFusion : public ParamServer
 {
 public:
@@ -91,7 +96,7 @@ public:
         // child_frame_id: odom_mapping
         lidarOdomAffine = odom2affine(*odomMsg);
         // 激光里程计时间戳,初始时设为-1
-        lidarOdomTime = odomMsg->header.stamp.toSec();
+        lidarOdomTime = odomMsg->header.stamp.toSec(); //当前因子图优化后odometry对应的时间
     }
 
     void imuOdometryHandler(const nav_msgs::Odometry::ConstPtr& odomMsg)
@@ -122,7 +127,7 @@ public:
         }
         Eigen::Affine3f imuOdomAffineFront = odom2affine(imuOdomQueue.front()); // 获取最老的imu里程计信息
         Eigen::Affine3f imuOdomAffineBack = odom2affine(imuOdomQueue.back());   // 获取最新的imu里程计信息
-        Eigen::Affine3f imuOdomAffineIncre = imuOdomAffineFront.inverse() * imuOdomAffineBack; // 获取最新最老帧之间的位姿增量
+        Eigen::Affine3f imuOdomAffineIncre = imuOdomAffineFront.inverse() * imuOdomAffineBack; // 获取最新最老帧之间的位姿增量  front <-- back
         // 最近的一帧激光里程计位姿 * imu里程计增量位姿变换 = 当前时刻imu里程计在odometry系下的位姿
         Eigen::Affine3f imuOdomAffineLast = lidarOdomAffine * imuOdomAffineIncre;//"lio_sam/mapping/odometry"
         float x, y, z, roll, pitch, yaw;
@@ -175,6 +180,11 @@ public:
     }
 };
 
+/**
+ ***订阅 "lio_sam/mapping/odometry_incremental"
+ * 发布imu积分后预测的odometry数据 odometry/imu_incremental
+ */
+
 class IMUPreintegration : public ParamServer
 {
 public:
@@ -188,7 +198,7 @@ public:
     bool systemInitialized = false;
 
     // 噪声协方差
-    gtsam::noiseModel::Diagonal::shared_ptr priorPoseNoise;
+    gtsam::noiseModel::Diagonal::shared_ptr priorPoseNoise;//先验噪声
     gtsam::noiseModel::Diagonal::shared_ptr priorVelNoise;
     gtsam::noiseModel::Diagonal::shared_ptr priorBiasNoise;
     gtsam::noiseModel::Diagonal::shared_ptr correctionNoise;
@@ -223,7 +233,7 @@ public:
 
     const double delta_t = 0;
 
-    int key = 1;
+    int key = 1; //当前关键帧索引
 
     gtsam::Pose3 imu2Lidar = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(-extTrans.x(), -extTrans.y(), -extTrans.z()));
     gtsam::Pose3 lidar2Imu = gtsam::Pose3(gtsam::Rot3(1, 0, 0, 0), gtsam::Point3(extTrans.x(), extTrans.y(), extTrans.z()));
@@ -300,6 +310,7 @@ public:
             return;
 
         // 当前帧激光位姿，来自scan-to-map匹配、因子图优化后的位姿
+        // 转换消息数据为gtsam的3d位姿
         float p_x = odomMsg->pose.pose.position.x;
         float p_y = odomMsg->pose.pose.position.y;
         float p_z = odomMsg->pose.pose.position.z;
@@ -600,6 +611,7 @@ public:
         gtsam::Pose3 imuPose = gtsam::Pose3(currentState.quaternion(), currentState.position());
         gtsam::Pose3 lidarPose = imuPose.compose(imu2Lidar);
 
+        //发布IMU数据积分估计的雷达里程计信息
         odometry.pose.pose.position.x = lidarPose.translation().x();
         odometry.pose.pose.position.y = lidarPose.translation().y();
         odometry.pose.pose.position.z = lidarPose.translation().z();
