@@ -61,12 +61,12 @@ public:
     Eigen::MatrixXd poseCovariance;
 
     ros::Publisher pubLaserCloudSurround;
-    ros::Publisher pubLaserOdometryGlobal;
-    ros::Publisher pubLaserOdometryIncremental;
-    ros::Publisher pubKeyPoses;
-    ros::Publisher pubPath;
+    ros::Publisher pubLaserOdometryGlobal; //优化后的雷达里程计
+    ros::Publisher pubLaserOdometryIncremental; //优化后的雷达里程计增量
+    ros::Publisher pubKeyPoses; //关键帧
+    ros::Publisher pubPath; //关键帧路径
 
-    ros::Publisher pubHistoryKeyFrames;
+    ros::Publisher pubHistoryKeyFrames; //历史关键帧
     ros::Publisher pubIcpKeyFrames;
     ros::Publisher pubRecentKeyFrames;
     ros::Publisher pubRecentKeyFrame;
@@ -125,7 +125,7 @@ public:
     ros::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
 
-    float transformTobeMapped[6];
+    float transformTobeMapped[6]; //上一帧与地图优化后的增量
 
     std::mutex mtx;
     std::mutex mtxLoopInfo;
@@ -149,7 +149,7 @@ public:
 
     Eigen::Affine3f transPointAssociateToMap;
     Eigen::Affine3f incrementalOdometryAffineFront;
-    Eigen::Affine3f incrementalOdometryAffineBack;
+    Eigen::Affine3f incrementalOdometryAffineBack;//当前帧到地图的增量
 
 
     mapOptimization()
@@ -157,7 +157,7 @@ public:
         ISAM2Params parameters;
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
-        isam = new ISAM2(parameters);
+        isam = new ISAM2(parameters); //初始化isam2优化器
 
         pubKeyPoses                 = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/trajectory", 1);
         pubLaserCloudSurround       = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/mapping/map_global", 1);
@@ -234,7 +234,7 @@ public:
     {
         // extract time stamp
         timeLaserInfoStamp = msgIn->header.stamp;
-        timeLaserInfoCur = msgIn->header.stamp.toSec();
+        timeLaserInfoCur = msgIn->header.stamp.toSec();//点云时间戳
 
         // extract info and feature cloud
         cloudInfo = *msgIn;
@@ -244,24 +244,32 @@ public:
         std::lock_guard<std::mutex> lock(mtx);
 
         static double timeLastProcessing = -1;
-        if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)
+        if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)//时间间隔足够大
         {
             timeLastProcessing = timeLaserInfoCur;
 
+            //更新当前帧位姿初值
             updateInitialGuess();
 
+            //提取关键帧附近的点云
             extractSurroundingKeyFrames();
 
+            //对角点和平面点降采样
             downsampleCurrentScan();
 
+            //匹配当前帧与地图，优化求解位姿
             scan2MapOptimization();
 
+            //保存关键帧，添加关键帧到因子图中优化，获得优化后的关键帧位姿
             saveKeyFramesAndFactor();
 
+            //存在回环时，进行回环优化，调整所有关键帧的位姿
             correctPoses();
 
+            //发布里程计
             publishOdometry();
 
+            //发布关键帧点云和路径邓
             publishFrames();
         }
     }
@@ -782,10 +790,12 @@ public:
     void updateInitialGuess()
     {
         // save current transformation before any processing
+        //处理前保存上一帧的变换（上一关键帧的位姿）
         incrementalOdometryAffineFront = trans2Affine3f(transformTobeMapped);
 
         static Eigen::Affine3f lastImuTransformation;
         // initialization
+        // 初始化，如果没有关键帧，根据IMU信息初始化当前帧的位姿和上次更新时的IMU变换
         if (cloudKeyPoses3D->points.empty())
         {
             transformTobeMapped[0] = cloudInfo.imuRollInit;
@@ -793,7 +803,7 @@ public:
             transformTobeMapped[2] = cloudInfo.imuYawInit;
 
             if (!useImuHeadingInitialization)
-                transformTobeMapped[2] = 0;
+                transformTobeMapped[2] = 0;//若以IMU初始化，yaw置零
 
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit); // save imu before return;
             return;
@@ -801,9 +811,10 @@ public:
 
         // use imu pre-integration estimation for pose guess
         static bool lastImuPreTransAvailable = false;
-        static Eigen::Affine3f lastImuPreTransformation;
+        static Eigen::Affine3f lastImuPreTransformation;//IMU估计的，前一帧到地图的增量,IMU:  w <-- last
         if (cloudInfo.odomAvailable == true)
         {
+            //获取当前帧对应的iMU里程计位姿，与初始状态相对的RPY
             Eigen::Affine3f transBack = pcl::getTransformation(cloudInfo.initialGuessX,    cloudInfo.initialGuessY,     cloudInfo.initialGuessZ, 
                                                                cloudInfo.initialGuessRoll, cloudInfo.initialGuessPitch, cloudInfo.initialGuessYaw);
             if (lastImuPreTransAvailable == false)
@@ -811,9 +822,11 @@ public:
                 lastImuPreTransformation = transBack;
                 lastImuPreTransAvailable = true;
             } else {
+                //imu估计的，帧间相对位姿增量 last <-- current
                 Eigen::Affine3f transIncre = lastImuPreTransformation.inverse() * transBack;
                 Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
                 Eigen::Affine3f transFinal = transTobe * transIncre;
+                //更新上一帧到地图的增量
                 pcl::getTranslationAndEulerAngles(transFinal, transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                               transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
 
@@ -871,6 +884,7 @@ public:
             surroundingKeyPoses->push_back(cloudKeyPoses3D->points[id]);
         }
 
+        //关键帧降采样
         downSizeFilterSurroundingKeyPoses.setInputCloud(surroundingKeyPoses);
         downSizeFilterSurroundingKeyPoses.filter(*surroundingKeyPosesDS);
         for(auto& pt : surroundingKeyPosesDS->points)
@@ -1299,7 +1313,7 @@ public:
                     break;              
             }
 
-            transformUpdate();
+            transformUpdate();//更新结果
         } else {
             ROS_WARN("Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
         }
@@ -1330,10 +1344,12 @@ public:
             }
         }
 
+        //控制前后变化量不太大
         transformTobeMapped[0] = constraintTransformation(transformTobeMapped[0], rotation_tollerance);
         transformTobeMapped[1] = constraintTransformation(transformTobeMapped[1], rotation_tollerance);
         transformTobeMapped[5] = constraintTransformation(transformTobeMapped[5], z_tollerance);
 
+        //保存当前帧到地图的增量
         incrementalOdometryAffineBack = trans2Affine3f(transformTobeMapped);
     }
 
@@ -1352,10 +1368,11 @@ public:
         if (cloudKeyPoses3D->points.empty())
             return true;
 
+        //计算当前帧与最新关键帧之间的相对变换
         Eigen::Affine3f transStart = pclPointToAffine3f(cloudKeyPoses6D->back());
         Eigen::Affine3f transFinal = pcl::getTransformation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                             transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        Eigen::Affine3f transBetween = transStart.inverse() * transFinal;
+        Eigen::Affine3f transBetween = transStart.inverse() * transFinal;//相对变换 lastkeyframe <-- current
         float x, y, z, roll, pitch, yaw;
         pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw);
 
@@ -1486,6 +1503,7 @@ public:
 
     void saveKeyFramesAndFactor()
     {
+        //判断当前帧是否为关键帧,不是关键帧直接返回，不做优化
         if (saveFrame() == false)
             return;
 
@@ -1514,6 +1532,7 @@ public:
             isam->update();
         }
 
+        //重置因子图初始值
         gtSAMgraph.resize(0);
         initialEstimate.clear();
 
@@ -1522,6 +1541,7 @@ public:
         PointTypePose thisPose6D;
         Pose3 latestEstimate;
 
+        //isam优化后结果
         isamCurrentEstimate = isam->calculateEstimate();
         latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size()-1);
         // cout << "****************************************************" << endl;
@@ -1531,8 +1551,9 @@ public:
         thisPose3D.y = latestEstimate.translation().y();
         thisPose3D.z = latestEstimate.translation().z();
         thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
-        cloudKeyPoses3D->push_back(thisPose3D);
+        cloudKeyPoses3D->push_back(thisPose3D);//保存当前帧为关键帧
 
+        //保存当前关键帧位姿
         thisPose6D.x = thisPose3D.x;
         thisPose6D.y = thisPose3D.y;
         thisPose6D.z = thisPose3D.z;
@@ -1546,9 +1567,10 @@ public:
         // cout << "****************************************************" << endl;
         // cout << "Pose covariance:" << endl;
         // cout << isam->marginalCovariance(isamCurrentEstimate.size()-1) << endl << endl;
-        poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);
+        poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);//关键帧优化后的协方差
 
         // save updated transform
+        //最新关键帧位姿，即与地图的增量
         transformTobeMapped[0] = latestEstimate.rotation().roll();
         transformTobeMapped[1] = latestEstimate.rotation().pitch();
         transformTobeMapped[2] = latestEstimate.rotation().yaw();
@@ -1643,15 +1665,15 @@ public:
         // Publish odometry for ROS (incremental)
         static bool lastIncreOdomPubFlag = false;
         static nav_msgs::Odometry laserOdomIncremental; // incremental odometry msg
-        static Eigen::Affine3f increOdomAffine; // incremental odometry in affine
+        static Eigen::Affine3f increOdomAffine; // incremental odometry in affine 增量式里程计
         if (lastIncreOdomPubFlag == false)
         {
             lastIncreOdomPubFlag = true;
             laserOdomIncremental = laserOdometryROS;
             increOdomAffine = trans2Affine3f(transformTobeMapped);
         } else {
-            Eigen::Affine3f affineIncre = incrementalOdometryAffineFront.inverse() * incrementalOdometryAffineBack;
-            increOdomAffine = increOdomAffine * affineIncre;
+            Eigen::Affine3f affineIncre = incrementalOdometryAffineFront.inverse() * incrementalOdometryAffineBack;//记录位姿增量
+            increOdomAffine = increOdomAffine * affineIncre;//todo
             float x, y, z, roll, pitch, yaw;
             pcl::getTranslationAndEulerAngles (increOdomAffine, x, y, z, roll, pitch, yaw);
             if (cloudInfo.imuAvailable == true)
@@ -1736,8 +1758,8 @@ int main(int argc, char** argv)
 
     ROS_INFO("\033[1;32m----> Map Optimization Started.\033[0m");
     
-    std::thread loopthread(&mapOptimization::loopClosureThread, &MO);
-    std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, &MO);
+    std::thread loopthread(&mapOptimization::loopClosureThread, &MO); //回环
+    std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, &MO);//地图查看
 
     ros::spin();
 

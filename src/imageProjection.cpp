@@ -311,7 +311,7 @@ public:
 
     void imuDeskewInfo()
     {
-        cloudInfo.imuAvailable = false;
+        cloudInfo.imuAvailable = false;//IMU信息先记录为不可用
 
         //丢弃早于雷达开始时间戳的IMU数据
         while (!imuQueue.empty())
@@ -332,7 +332,7 @@ public:
             sensor_msgs::Imu thisImuMsg = imuQueue[i];
             double currentImuTime = thisImuMsg.header.stamp.toSec();
 
-            //IMUshuju 四元数转欧拉角
+            //IMU数据 四元数转欧拉角
             // get roll, pitch, and yaw estimation for this scan
             if (currentImuTime <= timeScanCur)
                 imuRPY2rosRPY(&thisImuMsg, &cloudInfo.imuRollInit, &cloudInfo.imuPitchInit, &cloudInfo.imuYawInit);
@@ -369,12 +369,12 @@ public:
         if (imuPointerCur <= 0)
             return;
 
-        cloudInfo.imuAvailable = true;
+        cloudInfo.imuAvailable = true;//IMU信息记录为可用
     }
 
     void odomDeskewInfo()
     {
-        cloudInfo.odomAvailable = false;
+        cloudInfo.odomAvailable = false;//里程计信息先设定为不可用，若后续计算没问题，再重新设定为可用
 
         //丢弃早于当前开始时间的IMU数据
         while (!odomQueue.empty())
@@ -420,7 +420,7 @@ public:
         cloudInfo.initialGuessPitch = pitch;
         cloudInfo.initialGuessYaw   = yaw;
 
-        cloudInfo.odomAvailable = true;
+        cloudInfo.odomAvailable = true;//里程计信息可用，优化时使用此信息
 
         // get end odometry at the end of the scan
         odomDeskewFlag = false;
@@ -454,7 +454,7 @@ public:
         Eigen::Affine3f transBt = transBegin.inverse() * transEnd;//相对位姿变换 Start <-- End
 
         //雷达帧间位姿增量
-        float rollIncre, pitchIncre, yawIncre;
+        float rollIncre, pitchIncre, yawIncre;//姿态实际上未使用
         pcl::getTranslationAndEulerAngles(transBt, odomIncreX, odomIncreY, odomIncreZ, rollIncre, pitchIncre, yawIncre);
 
         odomDeskewFlag = true;
