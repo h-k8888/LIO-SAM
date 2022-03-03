@@ -75,8 +75,8 @@ private:
     int deskewFlag;
     cv::Mat rangeMat;
 
-    //畸变纠正时，IMU位置增量，由IMU里程计计算（IMU start <-- end 相对位置)
-    bool odomDeskewFlag;
+    //畸变纠正时，IMU位置增量，由IMU里程计计算（IMU start <-- end 相对位移)
+    bool odomDeskewFlag;//里程计信息是否可用
     float odomIncreX;
     float odomIncreY;
     float odomIncreZ;
@@ -190,6 +190,7 @@ public:
         projectPointCloud();
 
         //确定每根线的起始和结束点索引，并提取出畸变纠正后点云以及对应的点云信息
+        //根据深度图rangeMat,从fullCloud提取extractedCloud
         cloudExtraction();
 
         //发布有效的点云和激光点云信息（包括每根线的起始点和结束点索引，点深度，列索引）
@@ -309,6 +310,7 @@ public:
         return true;
     }
 
+    //积分获取雷达开始和结束时间内IMU的姿态（旋转）,直接对原始IMU角速度积分
     void imuDeskewInfo()
     {
         cloudInfo.imuAvailable = false;//IMU信息先记录为不可用
@@ -393,7 +395,7 @@ public:
 
         // get start odometry at the beinning of the scan
         nav_msgs::Odometry startOdomMsg;
-        //获取IMUl里程计起始帧（雷达开始和结束时间间隔内的第一个IMU里程计）
+        //获取IMU里程计起始帧（雷达开始和结束时间间隔内的第一个IMU里程计）
         for (int i = 0; i < (int)odomQueue.size(); ++i)
         {
             startOdomMsg = odomQueue[i];
@@ -440,6 +442,7 @@ public:
                 break;
         }
 
+        //检查里程计序列，防止使用重启后的里程计信息
         if (int(round(startOdomMsg.pose.covariance[0])) != int(round(endOdomMsg.pose.covariance[0])))
             return;
 
@@ -541,6 +544,7 @@ public:
         return newPoint;
     }
 
+    //对点云畸变纠正，并投影到深度图
     void projectPointCloud()
     {
         int cloudSize = laserCloudIn->points.size();
@@ -587,17 +591,20 @@ public:
         }
     }
 
+    //确定每根线的起始和结束点索引，并提取出畸变纠正后点云以及对应的点云信息
+    //根据深度图rangeMat,从fullCloud提取extractedCloud
     void cloudExtraction()
     {
         int count = 0;
         // extract segmented cloud for lidar odometry
-        for (int i = 0; i < N_SCAN; ++i)
+        for (int i = 0; i < N_SCAN; ++i)//遍历行
         {
+            //提取特征时，每一行的前5列和后5列不考虑
             cloudInfo.startRingIndex[i] = count - 1 + 5;
 
             for (int j = 0; j < Horizon_SCAN; ++j)
             {
-                if (rangeMat.at<float>(i,j) != FLT_MAX)
+                if (rangeMat.at<float>(i,j) != FLT_MAX)//深度图内有信息
                 {
                     // mark the points' column index for marking occlusion later
                     cloudInfo.pointColInd[count] = j;
@@ -609,7 +616,7 @@ public:
                     ++count;
                 }
             }
-            cloudInfo.endRingIndex[i] = count -1 - 5;
+            cloudInfo.endRingIndex[i] = count -1 - 5;//后5列
         }
     }
     

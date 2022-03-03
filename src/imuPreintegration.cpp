@@ -517,7 +517,7 @@ public:
         double lastImuQT = -1;
         while (!imuQueImu.empty() && ROS_TIME(&imuQueImu.front()) < currentCorrectionTime - delta_t)
         {
-            lastImuQT = ROS_TIME(&imuQueImu.front()); //早于当前ladar的最新imu时间
+            lastImuQT = ROS_TIME(&imuQueImu.front()); //早于当前lidar的最新imu时间
             imuQueImu.pop_front();
         }
         // 重新进行预积分，从矫正时间开始

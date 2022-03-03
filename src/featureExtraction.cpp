@@ -34,8 +34,8 @@ public:
 
     std::vector<smoothness_t> cloudSmoothness;
     float *cloudCurvature;
-    int *cloudNeighborPicked;
-    int *cloudLabel;
+    int *cloudNeighborPicked;//标记为不能被提取为特征的点（非极大抑制）
+    int *cloudLabel;//1:corner, -1:surface; 0:surface?
 
     FeatureExtraction()
     {

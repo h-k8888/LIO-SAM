@@ -54,11 +54,11 @@ public:
 
     // gtsam
     NonlinearFactorGraph gtSAMgraph;
-    Values initialEstimate;
+    Values initialEstimate;//关键帧在因子图中的初值<因子index， 初始pose>
     Values optimizedEstimate;
     ISAM2 *isam;
-    Values isamCurrentEstimate;
-    Eigen::MatrixXd poseCovariance;
+    Values isamCurrentEstimate;//优化后的因子pose<index，pose>
+    Eigen::MatrixXd poseCovariance;//关键帧在因子图中的位姿协方差（过大时引入gps）
 
     ros::Publisher pubLaserCloudSurround;
     ros::Publisher pubLaserOdometryGlobal; //优化后的雷达里程计
@@ -90,11 +90,13 @@ public:
     pcl::PointCloud<PointType>::Ptr copy_cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr copy_cloudKeyPoses6D;
 
+    //当前帧特征点云（lidar系）
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLast; // corner feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLast; // surf feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS; // downsampled corner featuer set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS; // downsampled surf featuer set from odoOptimization
 
+    //当前帧作scan to map构造残差
     pcl::PointCloud<PointType>::Ptr laserCloudOri;
     pcl::PointCloud<PointType>::Ptr coeffSel;
 
@@ -125,7 +127,7 @@ public:
     ros::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
 
-    float transformTobeMapped[6]; //上一帧与地图优化后的增量
+    float transformTobeMapped[6]; //rpy，xyz，上一帧与地图优化后的增量（作为先验，然后作为迭代优化）
 
     std::mutex mtx;
     std::mutex mtxLoopInfo;
@@ -254,7 +256,7 @@ public:
             //提取关键帧附近的点云
             extractSurroundingKeyFrames();
 
-            //对角点和平面点降采样
+            //对当前帧角点和平面点降采样
             downsampleCurrentScan();
 
             //匹配当前帧与地图，优化求解位姿
@@ -269,7 +271,7 @@ public:
             //发布里程计
             publishOdometry();
 
-            //发布关键帧点云和路径邓
+            //发布关键帧点云和路径等
             publishFrames();
         }
     }
@@ -810,6 +812,7 @@ public:
         }
 
         // use imu pre-integration estimation for pose guess
+        // 优先使用IMU预积分量作为初值
         static bool lastImuPreTransAvailable = false;
         static Eigen::Affine3f lastImuPreTransformation;//IMU估计的，前一帧到地图的增量,IMU:  w <-- last
         if (cloudInfo.odomAvailable == true)
@@ -826,7 +829,7 @@ public:
                 Eigen::Affine3f transIncre = lastImuPreTransformation.inverse() * transBack;
                 Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
                 Eigen::Affine3f transFinal = transTobe * transIncre;
-                //更新上一帧到地图的增量
+                //更新到地图的增量
                 pcl::getTranslationAndEulerAngles(transFinal, transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                               transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
 
@@ -837,6 +840,7 @@ public:
             }
         }
 
+        //预积分失效则使用IMU原始RPY测量值作为初值
         // use imu incremental estimation for pose guess (only rotation)
         if (cloudInfo.imuAvailable == true)
         {
@@ -1313,17 +1317,18 @@ public:
                     break;              
             }
 
-            transformUpdate();//更新结果
+            transformUpdate();//更新结果，将LIO里程计与IMU的RPY测量值融合
         } else {
             ROS_WARN("Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
         }
     }
 
+    //更新结果，将LIO里程计与IMU的RPY测量值融合
     void transformUpdate()
     {
         if (cloudInfo.imuAvailable == true)
         {
-            if (std::abs(cloudInfo.imuPitchInit) < 1.4)
+            if (std::abs(cloudInfo.imuPitchInit) < 1.4)//俯仰角小于1.4
             {
                 double imuWeight = imuRPYWeight;
                 tf::Quaternion imuQuaternion;
@@ -1523,6 +1528,7 @@ public:
         isam->update(gtSAMgraph, initialEstimate);
         isam->update();
 
+        //有回环需要多几次更新？
         if (aLoopIsClosed == true)
         {
             isam->update();
@@ -1532,7 +1538,7 @@ public:
             isam->update();
         }
 
-        //重置因子图初始值
+        //因子图已经加入到isam2中，重置因子图初始值
         gtSAMgraph.resize(0);
         initialEstimate.clear();
 
@@ -1550,7 +1556,7 @@ public:
         thisPose3D.x = latestEstimate.translation().x();
         thisPose3D.y = latestEstimate.translation().y();
         thisPose3D.z = latestEstimate.translation().z();
-        thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
+        thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index ，intensity记录keyframe的id
         cloudKeyPoses3D->push_back(thisPose3D);//保存当前帧为关键帧
 
         //保存当前关键帧位姿
@@ -1592,12 +1598,13 @@ public:
         updatePath(thisPose6D);
     }
 
+    //闭环之后，需要更新所有关键帧的位姿
     void correctPoses()
     {
         if (cloudKeyPoses3D->points.empty())
             return;
 
-        if (aLoopIsClosed == true)
+        if (aLoopIsClosed == true)//是否有回环
         {
             // clear map cache
             laserCloudMapContainer.clear();
