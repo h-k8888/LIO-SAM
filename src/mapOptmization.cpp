@@ -1680,7 +1680,7 @@ public:
             increOdomAffine = trans2Affine3f(transformTobeMapped);
         } else {
             Eigen::Affine3f affineIncre = incrementalOdometryAffineFront.inverse() * incrementalOdometryAffineBack;//记录位姿增量
-            increOdomAffine = increOdomAffine * affineIncre;//todo
+            increOdomAffine = increOdomAffine * affineIncre;
             float x, y, z, roll, pitch, yaw;
             pcl::getTranslationAndEulerAngles (increOdomAffine, x, y, z, roll, pitch, yaw);
             if (cloudInfo.imuAvailable == true)

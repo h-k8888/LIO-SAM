@@ -49,7 +49,7 @@ public:
     TransformFusion()
     {
         // 如果lidar系与baselink系不同（激光系和载体系），需要外部提供二者之间的变换关系
-        if(lidarFrame != baselinkFrame)//todo baselinkFrame
+        if(lidarFrame != baselinkFrame)
         {
             try
             {
