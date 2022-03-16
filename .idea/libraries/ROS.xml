@@ -1,0 +1,21 @@
+<component name="libraryTable">
+  <library name="ROS">
+    <CLASSES>
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+      <root url="file:///opt/ros/kinetic" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
