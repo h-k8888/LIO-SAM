@@ -1773,5 +1773,28 @@ int main(int argc, char** argv)
     loopthread.join();
     visualizeMapThread.join();
 
+    //save globalPath
+    if (MO.save_path)
+    {
+        printf("\n..............Saving path................\n");
+        ofstream of("/tmp/path.txt");
+        if (of.is_open())
+        {
+            of.setf(ios::fixed, ios::floatfield);
+            of.precision(6);
+            for (int i = 0; i < MO.globalPath.poses.size(); ++i) {
+                of<< MO.globalPath.poses[i].header.stamp.toSec()<< " "
+                  <<MO.globalPath.poses[i].pose.position.x<< " "
+                  <<MO.globalPath.poses[i].pose.position.y<< " "
+                  <<MO.globalPath.poses[i].pose.position.z<< " "
+                  <<MO.globalPath.poses[i].pose.orientation.x<< " "
+                  <<MO.globalPath.poses[i].pose.orientation.y<< " "
+                  <<MO.globalPath.poses[i].pose.orientation.z<< " "
+                  <<MO.globalPath.poses[i].pose.orientation.w<< "\n";
+            }
+            of.close();
+        }
+    }
+
     return 0;
 }
