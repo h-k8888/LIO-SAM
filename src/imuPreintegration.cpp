@@ -67,7 +67,7 @@ public:
         subLaserOdometry = nh.subscribe<nav_msgs::Odometry>("lio_sam/mapping/odometry", 5, &TransformFusion::lidarOdometryHandler, this, ros::TransportHints().tcpNoDelay());
 
         // 订阅imu里程计，来自IMUPreintegration
-        //订阅IMUPreintegration类发布的"odometry/imu_incremental"，即imu预测的lidar系下，lidar的姿态（相对于上一lidar odometry的变化量）
+        //订阅IMUPreintegration类发布的"odometry/imu_incremental"，即imu预测的lidar系下，lidar的姿态
         //将增量转换到odom系下，发布imu预测的，lidar在odom系下的姿态
         subImuOdometry   = nh.subscribe<nav_msgs::Odometry>(odomTopic+"_incremental",   2000, &TransformFusion::imuOdometryHandler,   this, ros::TransportHints().tcpNoDelay());
 
