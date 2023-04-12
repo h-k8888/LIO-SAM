@@ -122,6 +122,7 @@ public:
     float odometrySurfLeafSize;
     float mappingCornerLeafSize;
     float mappingSurfLeafSize ;
+    int OMPMapPoints;
 
     float z_tollerance; 
     float rotation_tollerance;
@@ -218,6 +219,7 @@ public:
         nh.param<float>("lio_sam/odometrySurfLeafSize", odometrySurfLeafSize, 0.2);
         nh.param<float>("lio_sam/mappingCornerLeafSize", mappingCornerLeafSize, 0.2);
         nh.param<float>("lio_sam/mappingSurfLeafSize", mappingSurfLeafSize, 0.2);
+        nh.param<int>("lio_sam/OMPMapPoints", OMPMapPoints, 100000);
 
         nh.param<float>("lio_sam/z_tollerance", z_tollerance, FLT_MAX);
         nh.param<float>("lio_sam/rotation_tollerance", rotation_tollerance, FLT_MAX);

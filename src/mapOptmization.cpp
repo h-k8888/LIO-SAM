@@ -17,6 +17,8 @@
 
 #include <gtsam/nonlinear/ISAM2.h>
 
+#include "voxel_grid_omp.h"
+
 using namespace gtsam;
 
 using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
@@ -123,7 +125,9 @@ public:
     pcl::VoxelGrid<PointType> downSizeFilterSurf;
     pcl::VoxelGrid<PointType> downSizeFilterICP;
     pcl::VoxelGrid<PointType> downSizeFilterSurroundingKeyPoses; // for surrounding key poses of scan-to-map optimization
-    
+
+    pcl::VoxelGridOMP downSizeOMPFilterSurf;
+
     ros::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
 
@@ -185,6 +189,11 @@ public:
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
         downSizeFilterICP.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
         downSizeFilterSurroundingKeyPoses.setLeafSize(surroundingKeyframeDensity, surroundingKeyframeDensity, surroundingKeyframeDensity); // for surrounding key poses of scan-to-map optimization
+
+        downSizeOMPFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+        downSizeOMPFilterSurf.setNumberOfThreads(numberOfCores);
+        downSizeOMPFilterSurf.setFinalFilter(true);
+        downSizeOMPFilterSurf.setMinimumPointsNumberPerVoxel(2);
 
         allocateMemory();
     }
@@ -941,10 +950,19 @@ public:
         downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
         downSizeFilterCorner.filter(*laserCloudCornerFromMapDS);
         laserCloudCornerFromMapDSNum = laserCloudCornerFromMapDS->size();
+
         // Downsample the surrounding surf key frames (or map)
-        downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
-        downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
-        laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
+        if ((int)laserCloudSurfFromMap->size() > OMPMapPoints) {
+            TicToc t_sds_omp;
+            downSizeOMPFilterSurf.setInputCloud(laserCloudSurfFromMap);
+            downSizeOMPFilterSurf.filter(*laserCloudSurfFromMapDS);
+//            ROS_WARN("submap surface OMP: %d -->> %d, cost: %fms", (int) laserCloudSurfFromMap->size(),
+//                     (int) laserCloudSurfFromMapDS->size(), t_sds_omp.toc());
+        } else {
+            downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
+            downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
+            laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->size();
+        }
 
         // clear map cache if too large
         if (laserCloudMapContainer.size() > 1000)
@@ -1782,7 +1800,7 @@ int main(int argc, char** argv)
         {
             of.setf(ios::fixed, ios::floatfield);
             of.precision(6);
-            for (int i = 0; i < MO.globalPath.poses.size(); ++i) {
+            for (int i = 0; i < (int)MO.globalPath.poses.size(); ++i) {
                 of<< MO.globalPath.poses[i].header.stamp.toSec()<< " "
                   <<MO.globalPath.poses[i].pose.position.x<< " "
                   <<MO.globalPath.poses[i].pose.position.y<< " "
