@@ -836,6 +836,10 @@ public:
             } else {
                 //imu估计的，帧间相对位姿增量 last <-- current
                 Eigen::Affine3f transIncre = lastImuPreTransformation.inverse() * transBack;
+//                float dx, dy, dz ,droll, dpitch, dyaw;
+//                pcl::getTranslationAndEulerAngles(transIncre, dx, dy, dz ,droll, dpitch, dyaw);
+//                ROS_ERROR("%f odom incre: %f %f %f %f %f %f", timeLaserInfoCur, dx, dy, dz ,droll, dpitch, dyaw);
+
                 Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
                 Eigen::Affine3f transFinal = transTobe * transIncre;
                 //更新到地图的增量
@@ -855,6 +859,9 @@ public:
         {
             Eigen::Affine3f transBack = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit);
             Eigen::Affine3f transIncre = lastImuTransformation.inverse() * transBack;
+//            float dx, dy, dz ,droll, dpitch, dyaw;
+//            pcl::getTranslationAndEulerAngles(transIncre, dx, dy, dz ,droll, dpitch, dyaw);
+//            ROS_ERROR("%f imu incre: %f %f %f %f %f %f", timeLaserInfoCur, dx, dy, dz ,droll, dpitch, dyaw);
 
             Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
             Eigen::Affine3f transFinal = transTobe * transIncre;

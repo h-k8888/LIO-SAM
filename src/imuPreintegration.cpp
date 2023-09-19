@@ -320,7 +320,7 @@ public:
         float r_w = odomMsg->pose.pose.orientation.w;
         bool degenerate = (int)odomMsg->pose.covariance[0] == 1 ? true : false;//退化
         gtsam::Pose3 lidarPose = gtsam::Pose3(gtsam::Rot3::Quaternion(r_w, r_x, r_y, r_z), gtsam::Point3(p_x, p_y, p_z));//最新lidarpose
-
+//        ROS_WARN("%f lidarPose: %f, %f, %f, %f, %f, %f, %f", odomMsg->header.stamp.toSec(), p_x, p_y, p_z, r_x, r_y, r_z, r_w);
 
         // 0. initialize system
         // 0. 系统初始化，第一帧
@@ -595,7 +595,8 @@ public:
         // thisImu是已经转换到lidar系下的imu测量信息，即积分后是lidar系下imu的信息(i时刻的lidar系）
         imuIntegratorImu_->integrateMeasurement(gtsam::Vector3(thisImu.linear_acceleration.x, thisImu.linear_acceleration.y, thisImu.linear_acceleration.z),
                                                 gtsam::Vector3(thisImu.angular_velocity.x,    thisImu.angular_velocity.y,    thisImu.angular_velocity.z), dt);
-
+//        ROS_WARN("%f thisImu acc: %f, %f, %f", imuTime, thisImu.linear_acceleration.x, thisImu.linear_acceleration.y, thisImu.linear_acceleration.z);
+//        ROS_WARN("%f thisImu ang v: %f, %f, %f", imuTime, thisImu.angular_velocity.x,    thisImu.angular_velocity.y,    thisImu.angular_velocity.z);
         // predict odometry
         // 用上一帧激光里程计时刻对应的状态、偏置，施加从该时刻开始到当前时刻的imu预计分量，得到当前时刻的状态
         gtsam::NavState currentState = imuIntegratorImu_->predict(prevStateOdom, prevBiasOdom);
@@ -610,6 +611,9 @@ public:
         // 根据imu到lidar的外参，imu的姿态和位置信息转换到lidar的信息
         gtsam::Pose3 imuPose = gtsam::Pose3(currentState.quaternion(), currentState.position());
         gtsam::Pose3 lidarPose = imuPose.compose(imu2Lidar);
+//        ROS_WARN("%f lidarPose: %f, %f, %f, %f, %f, %f, %f, %f", thisImu.header.stamp.toSec(), lidarPose.translation().x(),
+//                 lidarPose.translation().y(), lidarPose.translation().z(), lidarPose.rotation().toQuaternion().x(),
+//                 lidarPose.rotation().toQuaternion().y(), lidarPose.rotation().toQuaternion().z(), lidarPose.rotation().toQuaternion().w());
 
         //发布IMU数据积分估计的雷达里程计信息
         odometry.pose.pose.position.x = lidarPose.translation().x();
