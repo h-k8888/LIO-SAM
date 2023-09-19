@@ -157,7 +157,7 @@ public:
     Eigen::Affine3f incrementalOdometryAffineFront;
     Eigen::Affine3f incrementalOdometryAffineBack;//当前帧到地图的增量
 
-
+    nav_msgs::Path target_path;
     mapOptimization()
     {
         ISAM2Params parameters;
@@ -1621,6 +1621,28 @@ public:
 
         // save path for visualization
         updatePath(thisPose6D);
+
+        {
+            ///!! no loop path
+            //lidar --> target(imu)
+            Eigen::Affine3f pose_lidar = pcl::getTransformation(thisPose6D.x, thisPose6D.y, thisPose6D.z,
+                                                                thisPose6D.roll, thisPose6D.pitch, thisPose6D.yaw);
+            Eigen::Vector3f target_xyz = pose_lidar * gt_extTrans.cast<float>();
+            Eigen::Quaternionf target_q(pose_lidar.rotation() * gt_extRot.cast<float>());
+
+            geometry_msgs::PoseStamped pose_stamped;
+            pose_stamped.header.stamp = ros::Time().fromSec(thisPose6D.time);
+            pose_stamped.header.frame_id = odometryFrame;
+            pose_stamped.pose.position.x = target_xyz.x();
+            pose_stamped.pose.position.y = target_xyz.y();
+            pose_stamped.pose.position.z = target_xyz.z();
+//            tf::Quaternion q = tf::createQuaternionFromRPY(pose_in.roll, pose_in.pitch, pose_in.yaw);
+            pose_stamped.pose.orientation.x = target_q.x();
+            pose_stamped.pose.orientation.y = target_q.y();
+            pose_stamped.pose.orientation.z = target_q.z();
+            pose_stamped.pose.orientation.w = target_q.w();
+            target_path.poses.push_back(pose_stamped);
+        }
     }
 
     //闭环之后，需要更新所有关键帧的位姿
@@ -1802,20 +1824,26 @@ int main(int argc, char** argv)
     if (MO.save_path)
     {
         printf("\n..............Saving path................\n");
-        ofstream of("/tmp/path.txt");
+        string saveMapDirectory;
+
+        cout << "Saving target path to pcd files ..." << endl;
+        saveMapDirectory = std::getenv("HOME") + MO.savePCDDirectory;
+        cout << saveMapDirectory << endl;
+
+        ofstream of(saveMapDirectory + "/path.txt");
         if (of.is_open())
         {
             of.setf(ios::fixed, ios::floatfield);
             of.precision(6);
-            for (int i = 0; i < (int)MO.globalPath.poses.size(); ++i) {
-                of<< MO.globalPath.poses[i].header.stamp.toSec()<< " "
-                  <<MO.globalPath.poses[i].pose.position.x<< " "
-                  <<MO.globalPath.poses[i].pose.position.y<< " "
-                  <<MO.globalPath.poses[i].pose.position.z<< " "
-                  <<MO.globalPath.poses[i].pose.orientation.x<< " "
-                  <<MO.globalPath.poses[i].pose.orientation.y<< " "
-                  <<MO.globalPath.poses[i].pose.orientation.z<< " "
-                  <<MO.globalPath.poses[i].pose.orientation.w<< "\n";
+            for (int i = 0; i < (int)MO.target_path.poses.size(); ++i) {
+                of<< MO.target_path.poses[i].header.stamp.toSec()<< " "
+                  <<MO.target_path.poses[i].pose.position.x<< " "
+                  <<MO.target_path.poses[i].pose.position.y<< " "
+                  <<MO.target_path.poses[i].pose.position.z<< " "
+                  <<MO.target_path.poses[i].pose.orientation.x<< " "
+                  <<MO.target_path.poses[i].pose.orientation.y<< " "
+                  <<MO.target_path.poses[i].pose.orientation.z<< " "
+                  <<MO.target_path.poses[i].pose.orientation.w<< "\n";
             }
             of.close();
         }

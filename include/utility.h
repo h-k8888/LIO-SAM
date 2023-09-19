@@ -152,6 +152,13 @@ public:
     float globalMapVisualizationLeafSize;
 
     bool save_path;
+    vector<double> gt_extRotV;
+//    vector<double> extRPYV;
+    vector<double> gt_extTransV;
+    Eigen::Matrix3d gt_extRot;
+//    Eigen::Matrix3d extRPY;
+    Eigen::Vector3d gt_extTrans;
+//    Eigen::Quaterniond extQRPY;
     ParamServer()
     {
         nh.param<std::string>("/robot_id", robot_id, "roboat");
@@ -245,6 +252,11 @@ public:
         nh.param<float>("lio_sam/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
 
         nh.param<bool>("lio_sam/save_path", save_path, false);
+        nh.param<vector<double>>("/ground_truth/extrinsic_R", gt_extRotV, vector<double>());
+        nh.param<vector<double>>("/ground_truth/extrinsic_T", gt_extTransV, vector<double>());
+        gt_extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(gt_extRotV.data(), 3, 3);
+        gt_extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(gt_extTransV.data(), 3, 1);
+
         usleep(100);
     }
 
