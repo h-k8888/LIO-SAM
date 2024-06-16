@@ -241,6 +241,8 @@ public:
         matP = cv::Mat(6, 6, CV_32F, cv::Scalar::all(0));
     }
 
+    int num_scans = 0;
+    double mean_process_time = 0;
     void laserCloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
     {
         // extract time stamp
@@ -257,6 +259,8 @@ public:
         static double timeLastProcessing = -1;
         if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)//时间间隔足够大
         {
+            num_scans++;
+            double t_begin = omp_get_wtime();
             timeLastProcessing = timeLaserInfoCur;
 
             //更新当前帧位姿初值
@@ -277,11 +281,16 @@ public:
             //存在回环时，进行回环优化，调整所有关键帧的位姿
             correctPoses();
 
+            double t_end = omp_get_wtime();
+
             //发布里程计
             publishOdometry();
 
             //发布关键帧点云和路径等
             publishFrames();
+
+            mean_process_time = (t_end - t_begin) / num_scans + mean_process_time / num_scans * (num_scans - 1.0) ;
+            ROS_INFO("opt mean time: %fms.", mean_process_time * 1000.0);
         }
     }
 
@@ -1814,7 +1823,47 @@ public:
         {
             of.setf(ios::fixed, ios::floatfield);
             of.precision(6);
+            auto pose_last = target_path.poses[0];
             for (int i = 0; i < (int)target_path.poses.size(); ++i) {
+                //path interpolation
+                if (i >= 1) {
+                    double time_right = target_path.poses[i].header.stamp.toSec();
+                    double time_left = pose_last.header.stamp.toSec();
+                    double time_half = time_right * 0.5 + time_left * 0.5;
+//                    double begin_time = pose_last.header.stamp.toSec();
+
+                    //interpolate between end time left and right
+                    double dt_l = time_half - time_left;
+                    double dt_r = time_right - time_half;
+                    double dt_l_r = time_right - time_left;
+                    double ratio_l = dt_l / dt_l_r;
+                    double ratio_r = dt_r / dt_l_r;
+
+                    const auto &pose_r = target_path.poses[i].pose;
+                    const auto &pose_l = pose_last.pose;
+
+                    Eigen::Vector3d pos_l(pose_l.position.x, pose_l.position.y, pose_l.position.z);
+                    Eigen::Vector3d pos_r(pose_r.position.x, pose_r.position.y, pose_r.position.z);
+
+                    Eigen::Quaterniond q_l(pose_l.orientation.w, pose_l.orientation.x, pose_l.orientation.y,
+                                           pose_l.orientation.z);
+                    Eigen::Quaterniond q_r(pose_r.orientation.w, pose_r.orientation.x, pose_r.orientation.y,
+                                           pose_r.orientation.z);
+
+                    Eigen::Quaterniond  q_time_inter = q_l.slerp(ratio_l, q_r);
+                    Eigen::Vector3d pos_time_inter = pos_l * ratio_r + pos_r * ratio_l;
+
+                    of<< time_half << " "
+                          <<pos_time_inter(0)<< " " <<pos_time_inter(1)<< " " <<pos_time_inter(2)<< " "
+                          <<q_time_inter.x()<< " "
+                          <<q_time_inter.y()<< " "
+                          <<q_time_inter.z()<< " "
+                          <<q_time_inter.w()<< "\n";
+
+                    pose_last = target_path.poses[i];
+                }
+
+
                 of<< target_path.poses[i].header.stamp.toSec()<< " "
                   <<target_path.poses[i].pose.position.x<< " "
                   <<target_path.poses[i].pose.position.y<< " "
