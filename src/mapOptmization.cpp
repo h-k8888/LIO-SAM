@@ -1801,8 +1801,33 @@ public:
             pubPath.publish(globalPath);
         }
     }
-};
 
+    void savePath()
+    {
+        printf("\n..............Saving path................\n");
+        cout << "Saving target path to:" << endl;
+        string path_file = std::getenv("HOME") + savePCDDirectory + "/target_path.txt";
+        cout << path_file << endl;
+
+        ofstream of(path_file);
+        if (of.is_open())
+        {
+            of.setf(ios::fixed, ios::floatfield);
+            of.precision(6);
+            for (int i = 0; i < (int)target_path.poses.size(); ++i) {
+                of<< target_path.poses[i].header.stamp.toSec()<< " "
+                  <<target_path.poses[i].pose.position.x<< " "
+                  <<target_path.poses[i].pose.position.y<< " "
+                  <<target_path.poses[i].pose.position.z<< " "
+                  <<target_path.poses[i].pose.orientation.x<< " "
+                  <<target_path.poses[i].pose.orientation.y<< " "
+                  <<target_path.poses[i].pose.orientation.z<< " "
+                  <<target_path.poses[i].pose.orientation.w<< "\n";
+            }
+            of.close();
+        }
+    }
+};
 
 int main(int argc, char** argv)
 {
@@ -1822,30 +1847,7 @@ int main(int argc, char** argv)
 
     //save globalPath
     if (MO.save_path)
-    {
-        printf("\n..............Saving path................\n");
-        cout << "Saving target path to:" << endl;
-        string path_file = std::getenv("HOME") + MO.savePCDDirectory + "/target_path.txt";
-        cout << path_file << endl;
-
-        ofstream of(path_file);
-        if (of.is_open())
-        {
-            of.setf(ios::fixed, ios::floatfield);
-            of.precision(6);
-            for (int i = 0; i < (int)MO.target_path.poses.size(); ++i) {
-                of<< MO.target_path.poses[i].header.stamp.toSec()<< " "
-                  <<MO.target_path.poses[i].pose.position.x<< " "
-                  <<MO.target_path.poses[i].pose.position.y<< " "
-                  <<MO.target_path.poses[i].pose.position.z<< " "
-                  <<MO.target_path.poses[i].pose.orientation.x<< " "
-                  <<MO.target_path.poses[i].pose.orientation.y<< " "
-                  <<MO.target_path.poses[i].pose.orientation.z<< " "
-                  <<MO.target_path.poses[i].pose.orientation.w<< "\n";
-            }
-            of.close();
-        }
-    }
+        MO.savePath();
 
     return 0;
 }

@@ -6,7 +6,7 @@ lio_sam:
   odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
   gpsTopic: "odometry/gpsz"                   # GPS odometry topic from navsat, see module_navsat.launch file
 
-  save_path: true    #to "savePCDDirectory"/path.txt
+  save_path: true    #to "savePCDDirectory"/target_path.txt
 
   # Frames
   lidarFrame: "base_link"
