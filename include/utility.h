@@ -159,6 +159,7 @@ public:
 //    Eigen::Matrix3d extRPY;
     Eigen::Vector3d gt_extTrans;
 //    Eigen::Quaterniond extQRPY;
+    double lidar_time_offset;
     ParamServer()
     {
         nh.param<std::string>("/robot_id", robot_id, "roboat");
@@ -167,6 +168,7 @@ public:
         nh.param<std::string>("lio_sam/imuTopic", imuTopic, "imu_correct");
         nh.param<std::string>("lio_sam/odomTopic", odomTopic, "odometry/imu");
         nh.param<std::string>("lio_sam/gpsTopic", gpsTopic, "odometry/gps");
+        nh.param<double>("lio_sam/lidar_time_offset", lidar_time_offset, 0.0);
 
         nh.param<std::string>("lio_sam/lidarFrame", lidarFrame, "base_link");
         nh.param<std::string>("lio_sam/baselinkFrame", baselinkFrame, "base_link");

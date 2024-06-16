@@ -169,7 +169,8 @@ ekf_gps:
 
 # prism or RTK in LiDAR frame
 ground_truth:
-  extrinsic_T: [ -0.13, 0.0, 0.660 ]   # M2DGR dataset, GNSS in LiDAR frame
+#  extrinsic_T: [ -0.13, 0.0, 0.660 ]   # M2DGR dataset, GNSS in LiDAR frame
+  extrinsic_T: [ 0.0, 0.0, 0.0 ]   # M2DGR dataset, GNSS in LiDAR frame
   extrinsic_R: [ 1, 0, 0,
                  0, 1, 0,
                  0, 0, 1 ]

@@ -178,8 +178,13 @@ public:
 
     void cloudHandler(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg)
     {
+        sensor_msgs::PointCloud2Ptr cloud_in_ptr(new sensor_msgs::PointCloud2);
+        *cloud_in_ptr = *laserCloudMsg;
+        ros::Time cloud_begin_time(laserCloudMsg->header.stamp.toSec() + lidar_time_offset);
+        cloud_in_ptr->header.stamp = cloud_begin_time;
+//        ROS_WARN("laserCloudMsg->header.stamp.toSec(): %f", laserCloudMsg->header.stamp.toSec());
         //转换点云格式并缓存点云
-        if (!cachePointCloud(laserCloudMsg))
+        if (!cachePointCloud(cloud_in_ptr))
             return;
 
         //计算雷达起始和结束时间戳之间，IMU的相对位姿变换
@@ -202,6 +207,8 @@ public:
 
     bool cachePointCloud(const sensor_msgs::PointCloud2ConstPtr& laserCloudMsg)
     {
+//        ROS_WARN("begin time: %f", laserCloudMsg->header.stamp.toSec());
+
         // cache point cloud
         cloudQueue.push_back(*laserCloudMsg);
         if (cloudQueue.size() <= 2)
