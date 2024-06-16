@@ -7,7 +7,7 @@ lio_sam:
   gpsTopic:  "odometry/gpsz"                  # GPS odometry topic from navsat, see module_navsat.launch file
   lidar_time_offset: -0.10      # begin time = lidar timestamp + time offset
 
-  save_path: true    #to /tmp/path.txt
+  save_path: true    #to S{savePCDDirectory}/target_path.txt
 
   # Frames
   lidarFrame: "base_link"
@@ -23,7 +23,7 @@ lio_sam:
 
   # Export settings
   savePCD: false                              # https://github.com/TixiaoShan/LIO-SAM/issues/3
-  savePCDDirectory: "/Downloads/liosam_path/"        # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+  savePCDDirectory: "/ws_liosam/src/LIO-SAM/Log"        # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
 
   # Sensor Settings
   sensor: ouster                              # lidar sensor type, either 'velodyne' or 'ouster'

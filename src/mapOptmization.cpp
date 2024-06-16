@@ -1824,13 +1824,11 @@ int main(int argc, char** argv)
     if (MO.save_path)
     {
         printf("\n..............Saving path................\n");
-        string saveMapDirectory;
+        cout << "Saving target path to:" << endl;
+        string path_file = std::getenv("HOME") + MO.savePCDDirectory + "/target_path.txt";
+        cout << path_file << endl;
 
-        cout << "Saving target path to pcd files ..." << endl;
-        saveMapDirectory = std::getenv("HOME") + MO.savePCDDirectory;
-        cout << saveMapDirectory << endl;
-
-        ofstream of(saveMapDirectory + "/path.txt");
+        ofstream of(path_file);
         if (of.is_open())
         {
             of.setf(ios::fixed, ios::floatfield);
