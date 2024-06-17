@@ -160,6 +160,8 @@ public:
     Eigen::Vector3d gt_extTrans;
 //    Eigen::Quaterniond extQRPY;
     double lidar_time_offset;
+    bool valid_corner = true;
+    bool valid_surface = true;
     ParamServer()
     {
         nh.param<std::string>("/robot_id", robot_id, "roboat");
@@ -258,6 +260,9 @@ public:
         nh.param<vector<double>>("/ground_truth/extrinsic_T", gt_extTransV, vector<double>());
         gt_extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(gt_extRotV.data(), 3, 3);
         gt_extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(gt_extTransV.data(), 3, 1);
+
+        nh.param<bool>("lio_sam/valid_corner", valid_corner, true);
+        nh.param<bool>("lio_sam/valid_surface", valid_surface, true);
 
         usleep(100);
     }

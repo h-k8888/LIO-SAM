@@ -1352,7 +1352,44 @@ public:
             }
 
             transformUpdate();//更新结果，将LIO里程计与IMU的RPY测量值融合
-        } else {
+        }
+        else if (!valid_corner && laserCloudSurfLastDSNum > surfFeatureMinValidNum) {
+            kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMapDS);
+
+            for (int iterCount = 0; iterCount < 30; iterCount++)
+            {
+                laserCloudOri->clear();
+                coeffSel->clear();
+
+                surfOptimization();
+
+                combineOptimizationCoeffs();
+
+                if (LMOptimization(iterCount) == true)
+                    break;
+            }
+
+            transformUpdate();//更新结果，将LIO里程计与IMU的RPY测量值融合
+        }
+        else if (!valid_surface && laserCloudCornerLastDSNum > edgeFeatureMinValidNum) {
+            kdtreeCornerFromMap->setInputCloud(laserCloudCornerFromMapDS);
+
+            for (int iterCount = 0; iterCount < 30; iterCount++)
+            {
+                laserCloudOri->clear();
+                coeffSel->clear();
+
+                cornerOptimization();
+
+                combineOptimizationCoeffs();
+
+                if (LMOptimization(iterCount) == true)
+                    break;
+            }
+
+            transformUpdate();//更新结果，将LIO里程计与IMU的RPY测量值融合
+        }
+        else {
             ROS_WARN("Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
         }
     }

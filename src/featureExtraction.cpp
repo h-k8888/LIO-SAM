@@ -235,6 +235,11 @@ public:
 
             *surfaceCloud += *surfaceCloudScanDS;
         }
+
+        if (!valid_corner)
+            cornerCloud->clear();
+        if (!valid_surface)
+            surfaceCloud->clear();
     }
 
     void freeCloudInfoMemory()
